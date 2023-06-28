@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 import re
 
 class GCodeFile:
@@ -19,11 +19,26 @@ class GCodeFile:
     def get_file_size(self):
         return round((len(open(self.file_path).read()) / 1024), 2)
 
+    def is_gcode(self,line):
+        pattern = [r"^G\d.*$"]          # Line starts with G and a digit
+        pattern.append(r"^M\d.*$")      # Line starts with M and a digit
+        pattern.append(r"^T\d.*$")      # Line starts with T and a digit
+        pattern.append(r"^\(.*$")       # Line starts with (
+        pattern.append(r"^\s*$")        # Line is Empty or has only spaces and tabs
+        for pat in pattern:
+            if re.match(pat, line):
+                return True
+        return False
+
     def analyze_file(self):
         with open(self.file_path, "r") as file:
             gcode_lines = file.readlines()
             self.line_count = len(gcode_lines)
+            if self.line_count == 0:
+                raise EOFError("Input File ist leer!")
             for line in gcode_lines:
+                if not self.is_gcode(line):
+                    raise SyntaxError("Diese Zeile hat falsche Syntax:\n" + str(line))        #Raise error! this is no gcode!
                 if line.startswith("T"):
                     self.tool = re.search(r"T(\d+)", line).group(1)
                 elif re.search(r"Spindle Speed:\s*([\d.-]+)", line):
@@ -64,6 +79,11 @@ class GCodeAnalyzerApp:
         self.move_up_button = None
         self.move_down_button = None
         self.merge_button = None
+        self.checkbox_home = None
+        self.checkbox_home_var = tk.BooleanVar()
+        self.checkbox_tool = None
+        self.checkbox_tool_var = tk.BooleanVar()
+        self.messagebox = None
         self.create_gui()
 
     def create_gui(self):
@@ -101,25 +121,46 @@ class GCodeAnalyzerApp:
 
         self.open_button = tk.Button(self.root, text="Öffnen", command=self.open_files)
         self.open_button.pack(pady=10)
-        self.close_button = tk.Button(self.root, text="Schließen", command=self.close_file)
+        self.close_button = tk.Button(self.root, text="Entfernen", command=self.close_file)
         self.close_button.pack(pady=10)
         self.move_up_button = tk.Button(self.root, text="↑", command=self.move_file_up)
         self.move_up_button.pack(pady=5)
         self.move_down_button = tk.Button(self.root, text="↓", command=self.move_file_down)
         self.move_down_button.pack(pady=5)
+        self.checkbox_home = tk.Checkbutton(self.root, text="Enposition anfahren", variable=self.checkbox_home_var)
+        self.checkbox_home.pack(pady=10)
+        self.checkbox_tool = tk.Checkbutton(self.root, text="Mit Werkzeug 6 enden", variable=self.checkbox_tool_var)
+        self.checkbox_tool.pack(pady=10)
         self.merge_button = tk.Button(self.root, text="Zusammenführen und Speichern", command=self.merge_and_save)
         self.merge_button.pack(pady=10)
 
     def open_files(self):
         file_paths = filedialog.askopenfilenames(filetypes=[("GCode Files", "*.nc")])
         for file_path in file_paths:
-            gcode_file = GCodeFile(file_path)
-            self.file_list.append(gcode_file)
-            self.file_listbox.insert(tk.END, gcode_file.name)
+            try:
+                gcode_file = GCodeFile(file_path)
+            except SyntaxError as error:
+                print(str(error))
+                messagebox.showinfo("Fehler", str(error))
+            except EOFError as error:
+                messagebox.showinfo("Fehler", str(error))
+            else:
+                self.file_list.append(gcode_file)
+                self.file_listbox.insert(tk.END, gcode_file.name)
 
-    def close_file(selfs):
-
-        self.selected_file = None
+    def close_file(self):
+        try:
+            selected_index = self.file_listbox.curselection()   # get selected index
+            self.file_list.pop(selected_index[0])               # remove entry with index
+        except IndexError:
+            messagebox.showinfo("Fehler", "Kein File ausgewählt!")
+        else:
+            self.selected_file = None                           # clear selected file
+            self.file_listbox.delete(0, tk.END)                 # delete box
+            for file in self.file_list:                         # populate box again
+                self.file_listbox.insert(tk.END, file.name)
+            self.file_listbox.selection_clear(0, tk.END)        # clear selection in box
+            self.display_file_details_dummy()                   # draw details without value
 
     def on_file_selected(self, event):
         selected_index = self.file_listbox.curselection()
@@ -139,20 +180,32 @@ class GCodeAnalyzerApp:
         self.tool_var.set(self.selected_file.tool)
         self.tool_dropdown.configure(state="normal")
 
+    def display_file_details_dummy(self):   # function for drawing details without values
+        self.name_label.config(text="Name: ")
+        self.size_label.config(text="Größe (KB): ")
+        self.line_count_label.config(text="Anzahl der Zeilen: ")
+        self.order_label.config(text="Reihenfolge: ")
+        self.spindle_speed_label.config(text="Spindel Drehzahl (RPM): ")
+        self.feedrate_xy_label.config(text="Vorschub XY (mm/min): ")
+        self.feedrate_z_label.config(text="Vorschub Z (mm/min): ")
+        self.z_cut_label.config(text="Schnitttiefe (mm): ")
+        self.tool_var.set(6)
+        self.tool_dropdown.configure(state="normal")
+
     def on_tool_selected(self, tool):
         self.selected_file.tool = tool
 
     def move_file_up(self):
         selected_index = self.file_listbox.curselection()
-        if selected_index and selected_index[0] > 0:
-            self.file_list.insert(selected_index[0] - 1, self.file_list.pop(selected_index[0]))
-            self.file_listbox.delete(0, tk.END)
+        if selected_index and selected_index[0] > 0:        # check if not first in list
+            self.file_list.insert(selected_index[0] - 1, self.file_list.pop(selected_index[0]))     # remove and insert above
+            self.file_listbox.delete(0, tk.END)     # delete box and refresh it.
             for file in self.file_list:
                 self.file_listbox.insert(tk.END, file.name)
             self.file_listbox.selection_clear(0, tk.END)
-            self.file_listbox.selection_set(selected_index[0] - 1)
-            self.selected_file = self.file_list[selected_index[0] - 1]
-            self.display_file_details()
+            self.file_listbox.selection_set(selected_index[0] - 1)      # select moved entry
+            self.selected_file = self.file_list[selected_index[0] - 1]  # load selected file
+            self.display_file_details()                                 # display details
 
     def move_file_down(self):
         selected_index = self.file_listbox.curselection()
@@ -181,8 +234,10 @@ class GCodeAnalyzerApp:
         merged_content = ""
         for file in self.file_list:
             merged_content += re.sub(r"T\d+", "T" + str(file.tool), file.gcode_content)
-        merged_content += str(self.goToHome())
-        merged_content += str(self.changeT6())
+        if self.checkbox_home_var.get():
+            merged_content += str(self.goToHome())
+        if self.checkbox_tool_var.get():
+            merged_content += str(self.changeT6())
         save_path = filedialog.asksaveasfilename(filetypes=[("GCode Files", "*.nc")])
         with open(save_path, "w") as file:
             file.write(merged_content)
