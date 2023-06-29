@@ -2,6 +2,11 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import re
 
+END_TOOL = '6'
+ENDPOINT_COORD = {'x':351.200,'y':175.000,'z':122.000}
+
+APP_NAME = 'Happylab FlatCAM-Carvera Postprozessor'
+
 class GCodeFile:
     def __init__(self, file_path):
         self.file_path = file_path
@@ -87,7 +92,7 @@ class GCodeAnalyzerApp:
         self.create_gui()
 
     def create_gui(self):
-        self.root.title("Happylab Carvera GCode Merger")
+        self.root.title(str(APP_NAME))
         self.file_listbox = tk.Listbox(self.root)
         self.file_listbox.pack(side=tk.LEFT, fill=tk.BOTH, padx=10, pady=10)
         self.file_listbox.bind("<<ListboxSelect>>", self.on_file_selected)
@@ -220,16 +225,13 @@ class GCodeAnalyzerApp:
             self.display_file_details()
 
     def goToHome(self):
-        coord_x = 351.200
-        coord_y = 175.000
-        coord_z = 122.000
         movement = "M5\n"
-        movement += "G00 Z" + str(coord_z) + "\n"
-        movement += "G00 X" + str(coord_x) + " G00 Y" + str(coord_y) + "\n"
+        movement += "G00 Z" + str(ENDPOINT_COORD['z']) + "\n"
+        movement += "G00 X" + str(ENDPOINT_COORD['x']) + " G00 Y" + str(ENDPOINT_COORD['y']) + "\n"
         return movement
 
     def changeT6(self):
-        return "T6M6\n"
+        return "T" + str(END_TOOL) + "M6\n"
     def merge_and_save(self):
         merged_content = ""
         for file in self.file_list:
