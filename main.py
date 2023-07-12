@@ -6,6 +6,7 @@ END_TOOL = '6'
 ENDPOINT_COORD = {'x':351.200,'y':175.000,'z':122.000}
 
 APP_NAME = 'Happylab FlatCAM-Carvera Postprozessor'
+VERSION = '1.0'
 
 class GCodeFile:
     def __init__(self, file_path):
@@ -86,13 +87,15 @@ class GCodeAnalyzerApp:
         self.merge_button = None
         self.checkbox_home = None
         self.checkbox_home_var = tk.BooleanVar()
+        self.checkbox_home_var = tk.IntVar(value=1)     # Damit Checkbox standart aktiviert ist
         self.checkbox_tool = None
         self.checkbox_tool_var = tk.BooleanVar()
+        self.checkbox_tool_var = tk.IntVar(value=1)     # Damit Checkbox standart aktiviert ist
         self.messagebox = None
         self.create_gui()
 
     def create_gui(self):
-        self.root.title(str(APP_NAME))
+        self.root.title(str(APP_NAME)+' v'+str(VERSION))
         self.file_listbox = tk.Listbox(self.root)
         self.file_listbox.pack(side=tk.LEFT, fill=tk.BOTH, padx=10, pady=10)
         self.file_listbox.bind("<<ListboxSelect>>", self.on_file_selected)
