@@ -1,8 +1,1 @@
 Further To-Do:
-
-Home Position after Cutting
-Tool T6 after everything
-
-Try-Catch für Exceptions beim Lesen
-Syntax Checks - ist das GCode?
-    Zeile Beginnt mit G, M, T oder ( oder ist Leer.

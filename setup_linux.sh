@@ -1,0 +1,1 @@
+pyinstaller -F main.py --onefile --name "FlatCAM Carvera Postprozessor" --windowed
