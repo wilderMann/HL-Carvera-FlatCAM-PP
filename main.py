@@ -3,7 +3,8 @@ from tkinter import filedialog, messagebox
 import re
 
 END_TOOL = '6'
-ENDPOINT_COORD = {'x':348,'y':175.000,'z':122.000}
+ENDPOINT_COORD = {'x':348,'y':175.000,'z':122.000}  # Deprecated, only Using Z.
+GOTO_CLEARANCE = "M496.1"   # GoTo Clearance, is carvera specific code
 
 APP_NAME = 'Happylab FlatCAM-Carvera Postprozessor'
 VERSION = '1.0.1'
@@ -230,7 +231,7 @@ class GCodeAnalyzerApp:
     def goToHome(self):
         movement = "M5\n"
         movement += "G90 G00 Z" + str(ENDPOINT_COORD['z']) + "\n" # G90 is absolute mode, G00 move directly
-        movement += "G90 G00 X" + str(ENDPOINT_COORD['x']) + " Y" + str(ENDPOINT_COORD['y']) + "\n"
+        movement += GOTO_CLEARANCE + "\n"                         # using command from machine "GoTo Clearance"
         return movement
 
     def changeT6(self):
