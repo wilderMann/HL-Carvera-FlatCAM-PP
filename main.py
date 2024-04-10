@@ -230,7 +230,6 @@ class GCodeAnalyzerApp:
 
     def goToHome(self):
         movement = "M5\n"
-        movement += "G90 G00 Z" + str(ENDPOINT_COORD['z']) + "\n" # G90 is absolute mode, G00 move directly
         movement += GOTO_CLEARANCE + "\n"                         # using command from machine "GoTo Clearance"
         return movement
 
