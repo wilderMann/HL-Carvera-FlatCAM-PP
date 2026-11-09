@@ -106,6 +106,12 @@ On Windows the windowed GUI `.exe` cannot print to a console – use the `-cli` 
 | `carvera_pp/cli.py`, `carvera_pp/gui.py` | the two front ends |
 | `tests/` | unit tests. `tests/data/pcb2gcode_ecc83` = real pcb2gcode output (KiCad demo *ecc83*, bottom side). `tests/data/flatcam` = real FlatCAM 8.993 exports (Einschulung board, Toolchange off). `tests/data/flatcam_toolchange` = synthetic file after FlatCAM's `default` preprocessor with Toolchange on |
 
+## Development
+
+Core logic in `carvera_pp/core.py` (no GUI code), front ends in `cli.py` / `gui.py`, only the Python standard
+library. Run the tests before every commit: `python -m unittest discover -s tests` (also run by GitHub Actions on
+Ubuntu and Windows). Rules that must not break and notes for AI agents: [CLAUDE.md](CLAUDE.md).
+
 ## Changes in 2.0.0
 
 - command line interface next to the GUI, one shared core
