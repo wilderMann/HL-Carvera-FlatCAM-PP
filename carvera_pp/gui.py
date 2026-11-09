@@ -17,6 +17,7 @@ class App:
         self.var_tool6 = tk.IntVar(value=1)
         self.var_origin = tk.IntVar(value=0)
         self.var_slot = tk.StringVar()
+        self.var_rpm = tk.StringVar()
         self.selected = None              # (file_index, block_index or None)
         self._build_gui()
         self.refresh()
@@ -58,6 +59,12 @@ class App:
                                      state="disabled")
         self.slot_box.pack(anchor=tk.W)
         self.slot_box.bind("<<ComboboxSelected>>", self.on_slot)
+        ttk.Label(sl, text="Drehzahl (RPM):").pack(anchor=tk.W, pady=(6, 0))
+        self.rpm_box = ttk.Spinbox(sl, textvariable=self.var_rpm, from_=1000, to=15000, increment=1000, width=7,
+                                   state="disabled", command=self.on_rpm)
+        self.rpm_box.pack(anchor=tk.W)
+        self.rpm_box.bind("<Return>", self.on_rpm)
+        self.rpm_box.bind("<FocusOut>", self.on_rpm)
 
         self.canvas = tk.Canvas(right, width=440, height=320, bg="white", highlightthickness=1,
                                 highlightbackground="#999")
@@ -140,6 +147,18 @@ class App:
             return f.blocks[self.selected[1]]
         return f.blocks[0] if len(f.blocks) == 1 else None
 
+    def on_rpm(self, _=None):
+        b = self._sel_block()
+        if b is None:
+            return
+        try:
+            v = float(self.var_rpm.get())
+        except ValueError:
+            return
+        if v != b.rpm:
+            b.rpm, b.rpm_default = v, False
+            self.refresh()
+
     def on_slot(self, _):
         b = self._sel_block()
         if b is not None:
@@ -151,6 +170,7 @@ class App:
         if self.selected is None:
             self.details.config(text="")
             self.slot_box.config(state="disabled")
+            self.rpm_box.config(state="disabled")
             return
         f = self.job.files[self.selected[0]]
         v = lambda x: "-" if x is None else f"{x:g}"
@@ -161,13 +181,18 @@ class App:
                     f"Vorschub Z: {v(f.feedrate_z)}   Schnitttiefe: {v(f.z_cut)} mm\n")
         b = self._sel_block()
         if b is not None:
-            txt += (f"Werkzeug: {b.label} (in Datei T{b.orig_tool})   Drehzahl: {v(b.rpm)}   "
-                    f"Tiefe: {v(b.depth())} mm\n{b.info}")
+            src = f"in Datei {b.tool_ref}" if b.orig_tool else "ganze Datei = ein Werkzeug"
+            txt += (f"Werkzeug: {b.label} ({src})   Tiefe: {v(b.depth())} mm\n"
+                    + ("Drehzahl stand NICHT in der Datei - Standardwert, bitte prüfen!\n" if b.rpm_default else "")
+                    + b.info)
             self.var_slot.set(str(b.slot or ""))
+            self.var_rpm.set(f"{b.rpm:.0f}" if b.rpm else "")
             self.slot_box.config(state="readonly")
+            self.rpm_box.config(state="normal")
         else:
-            txt += "Mehrere Werkzeuge - zum Ändern des Slots ein Werkzeug auswählen."
+            txt += "Mehrere Werkzeuge in dieser Datei - zum Ändern ein Werkzeug auswählen."
             self.slot_box.config(state="disabled")
+            self.rpm_box.config(state="disabled")
         self.details.config(text=txt)
 
     def _options(self):
@@ -178,13 +203,17 @@ class App:
 
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
+        def vals(b):
+            d = b.depth()
+            return (b.label, (f"{b.rpm:.0f}" + ("*" if b.rpm_default else "")) if b.rpm else "-",
+                    f"{d:.3f}" if d is not None else "-", f"T{b.slot}" if b.slot else "-")
         for i, f in enumerate(self.job.files):
+            if len(f.blocks) == 1:            # normal FlatCAM case: one file = one tool -> one row
+                self.tree.insert("", tk.END, iid=f"f:{i}", text=f"{i + 1}. {f.name}", values=vals(f.blocks[0]))
+                continue
             fid = self.tree.insert("", tk.END, iid=f"f:{i}", text=f"{i + 1}. {f.name}", open=True)
             for k, b in enumerate(f.blocks):
-                d = b.depth()
-                self.tree.insert(fid, tk.END, iid=f"b:{i}:{k}", text=f"T{b.orig_tool}",
-                                 values=(b.label, f"{b.rpm:.0f}" if b.rpm else "-",
-                                         f"{d:.3f}" if d is not None else "-", f"T{b.slot}" if b.slot else "-"))
+                self.tree.insert(fid, tk.END, iid=f"b:{i}:{k}", text=f"   {b.tool_ref}", values=vals(b))
         if self.selected is not None and self.selected[0] < len(self.job.files):
             iid = f"f:{self.selected[0]}" if self.selected[1] is None else f"b:{self.selected[0]}:{self.selected[1]}"
             if self.tree.exists(iid):
@@ -198,13 +227,17 @@ class App:
             try:
                 self.lines = self.job.build()
                 probs, st = check(self.lines, self.job.options.max_depth)
+                notes = self.job.notes()
                 msg = (f"Prüfung: {'OK' if not probs else 'FEHLER'}   Schnittweg {st['feed_mm'] / 1000:.2f} m, "
                        f"ca. {st['time_min']:.0f} min, tiefste Z {st['zmin']:.2f}")
                 if probs:
                     msg += "\n" + "\n".join(probs[:6])
+                if notes:
+                    msg += "\n* " + "\n* ".join(notes)
             except GCodeError as e:
                 msg = "Nicht speicherbar:\n" + str(e)
-        self.status.config(text=msg, foreground="#2e7d32" if msg.startswith("Prüfung: OK") else "#c62828")
+        ok = msg.startswith("Prüfung: OK")
+        self.status.config(text=msg, foreground="#c62828" if not ok else "#e65100" if "\n* " in msg else "#2e7d32")
         self.draw()
 
     def draw(self):

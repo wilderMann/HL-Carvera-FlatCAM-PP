@@ -21,6 +21,9 @@ SLOTS = range(1, 6)          # usable ATC slots
 DUMMY_TOOL = 6               # Happylab: slot 6 always holds a dummy tool
 GOTO_CLEARANCE = "M496.1"    # Carvera specific: go to clearance position
 CARVERA_AREA = (360.0, 240.0)
+# used when a file has no spindle speed (FlatCAM writes a bare "M03" if the speed field is empty):
+# Makera's PCB presets (drills 10000 rpm, corn mills / engraving bits 12000 rpm)
+DEFAULT_RPM = {"drill": 10000, "mill": 12000, "vbit": 12000, "tool": 12000}
 
 WORD = re.compile(r"([A-Za-z])\s*([-+]?\d*\.?\d+)")
 COMMENT = re.compile(r"\(.*?\)|;.*$")
@@ -57,6 +60,7 @@ class Block:
     lines: list = field(default_factory=list)
     slot: int = None             # assigned ATC slot
     info: str = ""               # tool text from the file (MSG comment)
+    rpm_default: bool = False    # True: the file had no speed, DEFAULT_RPM was used
 
     @property
     def key(self):
@@ -68,6 +72,11 @@ class Block:
         names = {"vbit": "Gravierstichel / V-bit", "drill": "Bohrer", "mill": "Fräser", "tool": "Werkzeug"}
         d = f" Ø{fmt_num(self.dia)} mm" if self.dia else ""
         return f"{names.get(self.kind, self.kind)}{d}"
+
+    @property
+    def tool_ref(self):
+        """How the tool is called in the source file ('-' = file without tool change = one tool)."""
+        return f"T{self.orig_tool}" if self.orig_tool else "-"
 
     def depth(self):
         z = [w["Z"] for w in (words(code_of(l)) for l in self.lines) if "Z" in w]
@@ -96,6 +105,7 @@ class GCodeFile:
         self.z_cut = self._hdr(text, r"Z_Cut:\s*(-?[\d.]+)")
         self.is_excellon = bool(re.search(r"Preprocessor Excellon|TOOLS DIAMETER|drill size", text, re.I))
         self.header_dia = self._hdr(text, r"TOOL DIAMETER:\s*([\d.]+)")
+        self.hole_dias = re.findall(r"\(Tool: \d+ -> Dia: ([\d.]+)\)", text)   # FlatCAM Excellon header
         self.blocks = self._split(raw)
         if not self.blocks:
             raise GCodeError(f"{self.name}: keine Werkzeugwechsel / no tool change (T…) and no tool path found")
@@ -165,6 +175,11 @@ class GCodeFile:
         for b in blocks:
             if b.kind == "tool":
                 self._identify(b)
+            if not b.orig_tool and self.is_excellon and self.hole_dias and not b.info:
+                b.info = ("Excellon in FlatCAM: Ø " + ", ".join(self.hole_dias) + " mm - diese Datei bohrt ohne "
+                          "Werkzeugwechsel, also alles mit EINEM Bohrer")
+            if b.rpm is None:
+                b.rpm, b.rpm_default = float(DEFAULT_RPM[b.kind]), True
         return [b for b in blocks if any(code_of(l) for l in b.lines)]
 
     def _identify(self, b):
@@ -220,11 +235,11 @@ class Job:
         probs = []
         for b in self.blocks:
             if b.slot not in SLOTS:
-                probs.append(f"{b.source} T{b.orig_tool} ({b.label}): Slot {b.slot} ungültig - nur 1-5 (6 = Dummy)")
-            if b.rpm is None:
-                probs.append(f"{b.source} T{b.orig_tool}: keine Spindeldrehzahl gefunden / no spindle speed")
+                probs.append(f"{b.source} {b.tool_ref} ({b.label}): Slot {b.slot} ungültig - nur 1-5 (6 = Dummy)")
+            if b.rpm is None or b.rpm <= 0:
+                probs.append(f"{b.source} {b.tool_ref}: keine Spindeldrehzahl / no spindle speed")
             elif b.rpm > MAX_RPM:
-                probs.append(f"{b.source} T{b.orig_tool}: S{b.rpm:.0f} > {MAX_RPM} rpm (Carvera max)")
+                probs.append(f"{b.source} {b.tool_ref}: S{b.rpm:.0f} > {MAX_RPM} rpm (Carvera max)")
         used = {}
         for b in self.blocks:
             if b.slot in SLOTS and b.kind != "tool":
@@ -233,6 +248,11 @@ class Job:
             if len(keys) > 1:
                 probs.append(f"Slot {s} ist für verschiedene Werkzeuge vergeben: {', '.join(sorted(keys.values()))}")
         return probs
+
+    def notes(self):
+        """Things the user should know (not errors)."""
+        return [f"{b.source}: keine Drehzahl in der Datei - Standard S{b.rpm:.0f} für {b.label} verwendet"
+                for b in self.blocks if b.rpm_default]
 
     def _shift(self):
         if self.options.origin != "lower-left":
@@ -262,7 +282,8 @@ class Job:
         out.append("G90 G94 G17 G21")
         cur_slot, cur_rpm = None, None
         for b in self.blocks:
-            out += ["", f"( {b.source}: {b.label} - T{b.orig_tool} -> T{b.slot} )"]
+            out += ["", f"( {b.source}: {b.label} - {b.tool_ref + ' ' if b.orig_tool else ''}-> T{b.slot}"
+                        f"{' - Drehzahl Standard, nicht aus Datei' if b.rpm_default else ''} )"]
             if b.slot != cur_slot:
                 if cur_slot is not None:
                     out.append("M5")

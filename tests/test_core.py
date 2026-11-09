@@ -11,12 +11,15 @@ sys.path.insert(0, ROOT)
 from carvera_pp.core import (GCodeError, GCodeFile, Job, Options, check, code_of, cutter_radius,  # noqa: E402
                              load_pcb2gcode_dir, bounds)
 
-FC = os.path.join(ROOT, "tests", "data", "flatcam")
+FC = os.path.join(ROOT, "tests", "data", "flatcam")              # real FlatCAM 8.993 exports, Toolchange off
+FC_TC = os.path.join(ROOT, "tests", "data", "flatcam_toolchange")  # synthetic: FlatCAM default pp WITH tool changes
 P2G = os.path.join(ROOT, "tests", "data", "pcb2gcode_ecc83")
+FC_FILES = ["Einschulung Carvera-F_Cu.gbr_0.1575_iso3_cnc.nc", "2Einschulung Carvera.drl_cnc.nc",
+            "3Einschulung Carvera.drl_mill_cnc.nc", "4Einschulung Carvera-Edge_Cuts.gbr_cutout_cnc.nc"]
 
 
 def flatcam_job(**opt):
-    j = Job([GCodeFile(os.path.join(FC, n)) for n in ("isolation_top.nc", "drill.nc", "cutout.nc")], Options(**opt))
+    j = Job([GCodeFile(os.path.join(FC, n)) for n in FC_FILES], Options(**opt))
     j.auto_assign()
     return j
 
@@ -26,21 +29,34 @@ def codes(lines):
 
 
 class FlatCAM(unittest.TestCase):
-    def test_blocks_and_tools(self):
+    """Happylab workflow: one FlatCAM file per tool, no T word in the files."""
+
+    def test_one_file_one_tool(self):
         j = flatcam_job()
+        self.assertEqual([len(f.blocks) for f in j.files], [1, 1, 1, 1])
         self.assertEqual([(b.kind, b.dia, b.slot) for b in j.blocks],
-                         [("vbit", 0.1575, 1), ("drill", 0.8, 2), ("drill", 1.0, 3), ("drill", 1.4, 4), ("mill", 1.0, 5)])
-        self.assertEqual(j.blocks[3].rpm, 12000)   # per-tool speed from the drill file is kept
+                         [("vbit", 0.1575, 1), ("drill", None, 2), ("mill", 2.0, 3), ("mill", 2.0, 3)])
+
+    def test_missing_speed_gets_default_and_is_reported(self):
+        j = flatcam_job()
+        self.assertEqual([b.rpm for b in j.blocks], [15000, 10000, 12000, 15000])
+        self.assertEqual([b.rpm_default for b in j.blocks], [False, True, True, False])
+        self.assertEqual(len(j.notes()), 2)
 
     def test_carvera_rules(self):
         out = flatcam_job().build()
         c = codes(out)
-        tc = [x for x in c if x.startswith("T")]
-        self.assertEqual(tc, ["T1M6", "T2M6", "T3M6", "T4M6", "T5M6", "T6M6"])
+        self.assertEqual([x for x in c if x.startswith("T")], ["T1M6", "T2M6", "T3M6", "T6M6"])  # 2 mm mill once
         self.assertFalse([x for x in c if re.match(r"^M0?[01]\b", x)], "no M0/M1 pauses")
-        self.assertFalse([x for x in c if x in ("M6", "M06")], "no separate M6")
+        self.assertFalse([x for x in c if re.fullmatch(r"M0?3", x)], "no bare M03 without speed")
         self.assertEqual(c[-4:], ["M5", "M496.1", "T6M6", "M30"])
         self.assertEqual(check(out)[0], [])
+
+    def test_same_mill_other_speed(self):
+        c = codes(flatcam_job().build())
+        i = c.index("T3M6")
+        self.assertEqual(c[i + 1], "S12000 M3")
+        self.assertIn("S15000 M3", c[i + 2:])              # cutout file: speed change, no tool change
 
     def test_spindle_restarted_after_each_change(self):
         c = codes(flatcam_job().build())
@@ -53,18 +69,29 @@ class FlatCAM(unittest.TestCase):
         self.assertNotIn("M496.1", c)
         self.assertNotIn("T6M6", c)
 
-    def test_same_slot_no_extra_tool_change(self):
+    def test_different_tools_in_one_slot_refused(self):
         j = flatcam_job()
-        for b in j.blocks[1:4]:
-            b.slot = 2                         # wrong on purpose: three drills in one slot
+        j.blocks[1].slot = 3                               # drill into the 2 mm mill's slot
         with self.assertRaises(GCodeError):
-            j.build()                          # different tools in one slot is refused
+            j.build()
 
     def test_invalid_slot(self):
         j = flatcam_job()
         j.blocks[0].slot = 6
         with self.assertRaises(GCodeError):
             j.build()
+
+    def test_ascii_output(self):
+        "\n".join(flatcam_job().build()).encode("ascii")
+
+    def test_with_toolchange(self):
+        """FlatCAM with Toolchange on: T/M6/MSG/M0 block is replaced, each drill gets its own slot."""
+        f = GCodeFile(os.path.join(FC_TC, "drill_3tools.nc"))
+        self.assertEqual([(b.orig_tool, b.dia, b.rpm) for b in f.blocks], [(1, 0.8, 15000), (2, 1.0, 15000), (3, 1.4, 12000)])
+        j = Job([f]); j.auto_assign()
+        c = codes(j.build())
+        self.assertEqual([x for x in c if x.startswith("T")], ["T1M6", "T2M6", "T3M6", "T6M6"])
+        self.assertFalse([x for x in c if re.match(r"^M0?[016]$", x)])
 
     def test_inch_rejected(self):
         with self.assertRaises(GCodeError):
@@ -73,11 +100,6 @@ class FlatCAM(unittest.TestCase):
     def test_not_gcode_rejected(self):
         with self.assertRaises(GCodeError):
             GCodeFile("x.nc", text="hello world\n")
-
-    def test_without_toolchange(self):
-        f = GCodeFile("x.nc", text="(Spindle Speed: 12000 RPM)\nG21\nG90\nM03 S12000\nG00 X1 Y1\nG01 Z-0.1 F100\nG01 X5\n")
-        self.assertEqual(len(f.blocks), 1)
-        self.assertEqual(f.blocks[0].rpm, 12000)
 
 
 class Pcb2gcode(unittest.TestCase):
@@ -123,10 +145,12 @@ class CLI(unittest.TestCase):
     def test_flatcam_cli(self):
         with tempfile.TemporaryDirectory() as d:
             out = os.path.join(d, "job.nc")
-            r = self.run_cli(*[os.path.join(FC, n) for n in ("isolation_top.nc", "drill.nc", "cutout.nc")],
-                             "-o", out, "--preview")
+            r = self.run_cli(*[os.path.join(FC, n) for n in FC_FILES], "-o", out, "--preview",
+                             "--rpm", "2Einschulung Carvera.drl_cnc.nc=12000")
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertTrue(os.path.exists(out) and os.path.exists(os.path.join(d, "job_preview.svg")))
+            with open(out) as fh:
+                self.assertEqual(fh.read().count("S12000 M3"), 2)
 
     def test_pcb2gcode_cli(self):
         with tempfile.TemporaryDirectory() as d:
@@ -134,10 +158,12 @@ class CLI(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertIn("Check: OK", r.stdout)
 
-    def test_slot_conflict_is_error(self):
-        r = self.run_cli(os.path.join(FC, "drill.nc"), os.path.join(FC, "cutout.nc"), "--slot", "mill1=2", "--list")
-        self.assertEqual(r.returncode, 0)          # --list only shows
-        r = self.run_cli(os.path.join(FC, "drill.nc"), os.path.join(FC, "cutout.nc"), "--slot", "mill1=1", "-o", os.devnull)
+    def test_slot_per_file_and_conflict(self):
+        files = [os.path.join(FC, n) for n in FC_FILES]
+        r = self.run_cli(*files, "--slot", "2Einschulung Carvera.drl_cnc.nc=5", "--list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout, r"2Einschulung Carvera.drl_cnc.nc .* T5")
+        r = self.run_cli(*files, "--slot", "2Einschulung Carvera.drl_cnc.nc=1", "-o", os.devnull)
         self.assertEqual(r.returncode, 1)
         self.assertIn("verschiedene Werkzeuge", r.stderr)
 

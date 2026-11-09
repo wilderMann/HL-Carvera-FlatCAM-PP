@@ -15,40 +15,60 @@ EPILOG = """examples:
     main.py --pcb2gcode out_dir -o board_bottom.nc --preview
   show the tools first, then fix slots:
     main.py --list isolation.nc drill.nc cutout.nc
-    main.py isolation.nc drill.nc cutout.nc --slot vbit=1 --slot drill0.8=2 --slot "drill.nc:T3=4" --slot mill1=5
+    main.py iso.nc drill.nc drill_mill.nc cutout.nc --slot drill.nc=2 --slot drill_mill.nc=3 --rpm drill.nc=10000
+    (FlatCAM with 'Toolchange' off: one file = one tool; slots and speeds are set here, not in FlatCAM)
 
 exit codes: 0 ok, 1 input/usage error, 2 safety check failed (nothing written unless --force)
 """
 
 
-def parse_slot(spec):
-    m = re.fullmatch(r"(?:(?P<file>[^:]+):T(?P<t>\d+)|(?P<kind>vbit|drill|mill|tool)(?P<dia>[\d.]*))=(?P<slot>\d+)", spec)
-    if not m:
-        raise argparse.ArgumentTypeError(f"bad --slot '{spec}' (use FILE:T<n>=<slot> or drill0.8=<slot> / vbit=<slot>)")
-    return m.groupdict()
+def parse_spec(spec):
+    """'WHAT=VALUE' where WHAT is a file name, 'file:T<n>', or a tool: vbit, drill0.8, mill1, mill2 ..."""
+    if "=" not in spec:
+        raise argparse.ArgumentTypeError(f"'{spec}': use WHAT=VALUE, e.g. drill.nc=2, drill.nc:T3=4, drill0.8=2")
+    what, val = spec.rsplit("=", 1)
+    try:
+        val = float(val)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"'{spec}': value must be a number")
+    m = re.fullmatch(r"(vbit|drill|mill|tool)([\d.]*)", what)
+    if m:
+        return {"kind": m.group(1), "dia": m.group(2), "value": val, "text": spec}
+    m = re.fullmatch(r"(.+):T(\d+)", what)
+    if m:
+        return {"file": m.group(1), "t": int(m.group(2)), "value": val, "text": spec}
+    return {"file": what, "t": None, "value": val, "text": spec}
 
 
-def apply_slots(job, specs):
+def apply_specs(job, specs, attr):
     for sp in specs:
         hit = 0
         for b in job.blocks:
-            if sp["file"]:
-                ok = b.source == os.path.basename(sp["file"]) and b.orig_tool == int(sp["t"])
-            else:
+            if "kind" in sp:
                 ok = b.kind == sp["kind"] and (not sp["dia"] or (b.dia is not None and abs(b.dia - float(sp["dia"])) < 1e-3))
+            else:
+                ok = b.source == os.path.basename(sp["file"]) and (sp["t"] is None or b.orig_tool == sp["t"])
             if ok:
-                b.slot = int(sp["slot"])
+                if attr == "slot":
+                    b.slot = int(sp["value"])
+                else:
+                    b.rpm, b.rpm_default = sp["value"], False
                 hit += 1
         if not hit:
-            raise GCodeError(f"--slot {sp}: no matching tool")
+            raise GCodeError(f"--{attr} {sp['text']}: no matching file/tool (see --list)")
 
 
 def table(job):
-    rows = [f"  {'#':>2}  {'file':24} {'tool':>4} {'what':28} {'rpm':>6} {'depth':>7} {'slot':>4}"]
+    w = max([len(b.source) for b in job.blocks] + [4])
+    rows = [f"  {'#':>2}  {'file':{w}}  {'T':>4}  {'tool':26} {'rpm':>7} {'depth':>7} {'slot':>4}"]
     for i, b in enumerate(job.blocks, 1):
         d = b.depth()
-        rows.append(f"  {i:>2}  {b.source[:24]:24} T{b.orig_tool:<3} {b.label[:28]:28} {b.rpm or 0:>6.0f} "
+        rpm = f"{b.rpm:.0f}{'*' if b.rpm_default else ' '}" if b.rpm else "-"
+        rows.append(f"  {i:>2}  {b.source:{w}}  {b.tool_ref:>4}  {b.label[:26]:26} {rpm:>7} "
                     f"{d if d is not None else 0:>7.3f} {('T' + str(b.slot)) if b.slot else '-':>4}")
+    if any(b.rpm_default for b in job.blocks):
+        rows.append("  * no spindle speed in the file - default used, set it with --rpm FILE=<rpm>")
+    rows.append("  T '-' = file without tool change = one tool (FlatCAM 'Toolchange' off)")
     return "\n".join(rows)
 
 
@@ -59,8 +79,11 @@ def main(argv=None):
     ap.add_argument("files", nargs="*", help="G-code files in machining order (.nc/.ngc/.gcode)")
     ap.add_argument("--pcb2gcode", metavar="DIR", help="use all pcb2gcode outputs in DIR (front/back, drill, milldrill, outline)")
     ap.add_argument("-o", "--output", help="output file (default: carvera_job.nc next to the first input)")
-    ap.add_argument("--slot", action="append", type=parse_slot, default=[], metavar="SPEC",
-                    help="set ATC slot: FILE:T<n>=<slot>, or by tool: vbit=1, drill0.8=2, mill1=5 (repeatable)")
+    ap.add_argument("--slot", action="append", type=parse_spec, default=[], metavar="WHAT=N",
+                    help="ATC slot 1-5 for a file (drill.nc=2), one tool of a file (drill.ngc:T3=4) or all tools "
+                         "of a kind/size (vbit=1, drill0.8=2, mill2=3); repeatable")
+    ap.add_argument("--rpm", action="append", type=parse_spec, default=[], metavar="WHAT=RPM",
+                    help="spindle speed, same WHAT as --slot (needed when FlatCAM wrote no speed); repeatable")
     ap.add_argument("--keep-tool-numbers", action="store_true", help="use the T numbers from the files (1-5) instead of auto")
     ap.add_argument("--origin", choices=["keep", "lower-left"], help="lower-left: shift X/Y so the job starts at X0 Y0 "
                     "(default: lower-left for --pcb2gcode, keep otherwise)")
@@ -90,7 +113,8 @@ def main(argv=None):
         job = Job(files, Options(goto_clearance=not a.no_clearance, end_with_dummy=not a.no_dummy, origin=origin,
                                  origin_margin=margin, z_change=a.z_change, max_depth=a.max_depth))
         job.auto_assign(keep_numbers=a.keep_tool_numbers)
-        apply_slots(job, a.slot)
+        apply_specs(job, a.slot, "slot")
+        apply_specs(job, a.rpm, "rpm")
         if a.list:
             print(table(job))
             return 0
@@ -111,6 +135,8 @@ def main(argv=None):
         say(f"  T{s}: {lab}")
     if not a.no_dummy:
         say(f"  T{DUMMY_TOOL}: dummy tool (loaded at the end)")
+    for n in job.notes():
+        say("Note: " + n)
     say(f"\nOrigin: {origin}" + (f" (margin {margin:g} mm)" if origin == "lower-left" else ""))
     say(f"Cutting distance {st['feed_mm'] / 1000:.2f} m, ~{st['time_min']:.0f} min without rapids/tool changes, "
         f"deepest Z {st['zmin']:.3f}")
