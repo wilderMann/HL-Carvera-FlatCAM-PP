@@ -30,7 +30,7 @@ Only the Python standard library is used (tkinter for the GUI), Python ≥ 3.8.
 - **safety check** of the result (simulation): `T<n>M6`, slots, no M0/M1, rpm ≤ 15000, no cutting with the spindle
   off, no rapid move down into the material, no rapid XY move below Z0, nothing deeper than −2.0 mm (bed), job fits
   the Carvera work area (360 × 240 mm). Problems block saving (GUI asks, CLI needs `--force`)
-- **preview** of the tool paths (GUI, and `…_preview.svg` next to the saved file) and estimated cutting time
+- **preview** of the tool paths (GUI, and `…_preview.svg` next to the saved file)
 - output is plain ASCII; refuses inch files (`G20`), empty files and files that are not G-code
 
 ## FlatCAM workflow (Happylab)
@@ -116,4 +116,4 @@ On Windows the windowed GUI `.exe` cannot print to a console – use the `-cli` 
 - files with several tool changes are split per tool (FlatCAM Toolchange on, pcb2gcode drill files)
 - removes the `M0` pause after tool changes (it was kept before) and other leftovers
 - spindle restarted with the right speed after every tool change; one tool change for a repeated tool
-- safety check, preview, cutting time, ASCII output, `M30`
+- safety check, preview, ASCII output, `M30`

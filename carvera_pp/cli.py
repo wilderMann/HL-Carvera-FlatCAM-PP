@@ -138,8 +138,7 @@ def main(argv=None):
     for n in job.notes():
         say("Note: " + n)
     say(f"\nOrigin: {origin}" + (f" (margin {margin:g} mm)" if origin == "lower-left" else ""))
-    say(f"Cutting distance {st['feed_mm'] / 1000:.2f} m, ~{st['time_min']:.0f} min without rapids/tool changes, "
-        f"deepest Z {st['zmin']:.3f}")
+    say(f"Cutting distance {st['feed_mm'] / 1000:.2f} m, deepest Z {st['zmin']:.3f}")
     say("Check: " + ("OK" if not probs else "FAILED"))
     for p in probs:
         print("  !! " + p, file=sys.stderr if a.quiet else sys.stdout)

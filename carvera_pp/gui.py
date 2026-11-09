@@ -229,7 +229,7 @@ class App:
                 probs, st = check(self.lines, self.job.options.max_depth)
                 notes = self.job.notes()
                 msg = (f"Prüfung: {'OK' if not probs else 'FEHLER'}   Schnittweg {st['feed_mm'] / 1000:.2f} m, "
-                       f"ca. {st['time_min']:.0f} min, tiefste Z {st['zmin']:.2f}")
+                       f"tiefste Z {st['zmin']:.2f}")
                 if probs:
                     msg += "\n" + "\n".join(probs[:6])
                 if notes:
@@ -297,7 +297,7 @@ class App:
         messagebox.showinfo("Gespeichert", f"{path}\n\nWerkzeuge einsetzen:\n" +
                             "\n".join(f"  T{s}: {lab}" for s, lab in sorted(rack.items())) +
                             (f"\n  T{DUMMY_TOOL}: Dummy" if self.var_tool6.get() else "") +
-                            f"\n\nca. {st['time_min']:.0f} min Schnittzeit. Auto-Leveling verwenden und beobachten!")
+                            "\n\nAuto-Leveling verwenden und beobachten!")
 
 
 def main():

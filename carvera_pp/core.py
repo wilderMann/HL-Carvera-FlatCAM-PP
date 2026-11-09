@@ -344,7 +344,7 @@ def bounds(lines, feed_only=False):
 
 def check(lines, max_depth=2.0, area=CARVERA_AREA):
     """Simulate the program; return (problems, stats). Only the dangerous mistakes."""
-    probs, stats = [], {"tools": [], "zmin": 0.0, "feed_mm": 0.0, "time_min": 0.0}
+    probs, stats = [], {"tools": [], "zmin": 0.0, "feed_mm": 0.0}
     x = y = z = None
     spindle, tool, g, f = False, None, None, None
     for n, line in enumerate(lines, 1):
@@ -391,8 +391,6 @@ def check(lines, max_depth=2.0, area=CARVERA_AREA):
             if g in ("2", "3") and (nx, ny) == (x, y) and ("I" in w or "J" in w):   # full circle / helix
                 d = math.hypot(2 * math.pi * math.hypot(w.get("I", 0), w.get("J", 0)), nz - z)
             stats["feed_mm"] += d
-            if f:
-                stats["time_min"] += d / f
         if nz is not None:
             stats["zmin"] = min(stats["zmin"], nz)
         x, y, z = nx, ny, nz
