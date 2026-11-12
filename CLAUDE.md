@@ -27,5 +27,5 @@ GUI check without clicking: create `App(tk.Tk())`, `app._add([...])`, screenshot
 
 ## Docs to keep in sync
 When options or output lines change, update docs/CLI.md (stable report lines: `Tool rack:`, `Check: OK|FAILED`,
-`Written:`, `Preview:`), the option table in README.md and AGENTS.md. Machine data (AGENTS.md §5, README "Tested on the
-Carvera", examples/millproject_carvera) only changes after a real test on the machine.
+`Written:`, `Preview:`), the option table in README.md and AGENTS.md. Keep the docs general: no personal data, and no
+results of one person's bits as universal facts. examples/millproject_carvera is a starting point.

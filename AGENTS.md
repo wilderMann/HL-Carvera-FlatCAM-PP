@@ -31,7 +31,7 @@ python3 main.py --list iso.nc drill.nc cutout.nc            # 1. look
 python3 main.py iso.nc drill.nc cutout.nc -o board.nc --preview --slot ... --rpm ...   # 2. build
 ```
 
-`examples/millproject_carvera` holds the pcb2gcode settings that were checked on the real machine (§5).
+`examples/millproject_carvera` is an example configuration, a starting point (§5).
 
 ## 3. Check every run (mandatory)
 
@@ -60,25 +60,29 @@ python3 main.py iso.nc drill.nc cutout.nc -o board.nc --preview --slot ... --rpm
   1. Load the tools as listed.
   2. Fix the blank with the copper side up.
   3. Set the work origin.
-  4. Turn on **Auto-Leveling** (the isolation is only 0.1 mm deep).
+  4. Turn on **Auto-Leveling** (the isolation is only about 0.1 mm deep).
 - **Don't give cutting time estimates.** That's a user decision: tool changes and auto-leveling make them wrong.
   Cutting path length and deepest Z are fine. If the user explicitly asks for a time, give it as a rough range and
   say what it leaves out.
 
-## 5. Machine data checked on the Carvera (Happylab, 2026-11)
+## 5. Machine data
 
-| What | Value | Why |
-|---|---|---|
-| V-bit | Sorotec VHM Frässtichel 30° (LGS.0030), 12000 rpm, F500, plunge F200 | Happylab tool, Makera "Single Flute Engraving 30°" PCB preset |
-| Isolation | `zwork=-0.10`, `mill-diameters=0.25mm`, `isolation-width=0.44mm` (2 passes) | calibration board + 3D scan: copper edges at design ±0.03 mm. Z-0.05 doesn't cut through the copper everywhere. Z-0.15 gives no gain. |
-| Real isolation gap | about 0.35 mm (the 2nd pass cuts less) | 3D scan |
-| Smallest copper gap that can be isolated | about 0.25 mm. Design clearance should be ≥ 0.25 mm (tracks), ≥ 0.5 mm (pads). | groove width |
-| Drills | 0.8 / 1.0 / 1.4 mm, `zdrill=-2.1` (1.6 board + drill tip + margin), 10000 rpm, F200 → run this tool with `--max-depth 2.2` | −1.7 left holes closed. −2.1: all holes through. |
-| Outline | 2 mm diamond corn mill, `zcut=-1.7`, 0.3 mm per pass, 12000 rpm, F500, 4 tabs | Makera PCB preset. Use the 1 mm mill if the board also has milled holes ≥ 1.55 mm (otherwise 6 tools > 5 slots). |
-| Spindle | ≤ 15000 rpm | Carvera max |
+The tool does not choose depths or tool sizes. They come from the CAM settings (pcb2gcode config / FlatCAM).
+[`examples/millproject_carvera`](examples/millproject_carvera) is a **starting point**. Every bit is different, so
+don't present its numbers as facts about the user's machine. Ask which bits the user has, or check the shop's tool
+list.
 
-If the user has a different bit or material, suggest milling a calibration board first: a few 10 mm squares
-isolated at 2–3 depths. Measure them with calipers or a 3D scan, then adjust `mill-diameters`.
+What matters, and how to get it right:
+
+| Setting | Rule |
+|---|---|
+| V-bit `mill-diameters` | The groove width the bit **really** cuts at `zwork`: tip + 2·depth·tan(angle/2) + runout. A "sharp" bit is never really sharp. If it's too small, tracks come out thinner than designed. **Calibrate:** isolate a few 10 mm squares, measure them, then `width_new = width_cfg + (design − measured)`. |
+| `zwork` | It must cut through the copper (35 µm) even where the auto-leveling is off by a little. Around 0.1 mm is typical, but check that the copper is cut through all around. |
+| `zdrill` | Board thickness + drill tip (≈ 0.3 × D for 118°) + margin. Example: 1.6 mm board → −2.1. That needs `--max-depth 2.2`, because the default 2.0 protects the bed. |
+| Outline mill | Inside corners get radius = cutter radius. Count the tools: V-bit + drills + mills must fit in **5 slots**. |
+| Spindle speed | ≤ 15000 rpm (Carvera max). The Makera PCB presets are a good default. |
+
+Design-rule hints for the user follow from the real groove width: copper clearance ≥ that width, plus some margin.
 
 ## 6. Common pitfalls
 

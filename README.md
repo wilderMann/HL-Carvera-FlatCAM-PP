@@ -82,28 +82,13 @@ Exit codes: `0` ok, `1` input/usage error (nothing written), `2` safety check fa
 ## pcb2gcode
 
 [pcb2gcode](https://github.com/pcb2gcode/pcb2gcode) is a command line CAM for PCBs (it also has an MCP server for AI
-assistants). [`examples/millproject_carvera`](examples/millproject_carvera) holds the settings for the Happylab tools
-that were checked on the machine:
+assistants). [`examples/millproject_carvera`](examples/millproject_carvera) is an example configuration for the
+Carvera. Use it as a starting point and adjust tool sizes, depths and speeds to your own bits:
 
 ```bash
 pcb2gcode --config examples/millproject_carvera --back B_Cu.gbr --drill board.drl --outline Edge_Cuts.gbr --output-dir out
 python main.py --pcb2gcode out -o board_bottom.nc --preview --max-depth 2.2
 ```
-
-## Tested on the Carvera (Happylab, November 2026)
-
-The pcb2gcode route was milled on the Happylab Carvera: a single-sided THT board, and a calibration board with
-isolation at three depths, measured with calipers and a 3D scanner (RaptorX).
-
-| | Setting | Result |
-|---|---|---|
-| Isolation, 30° V-bit (Sorotec LGS.0030) | Z −0.10, `mill-diameters=0.25mm`, 2 passes, 12000 rpm, F500 | copper edges at the design within ±0.03 mm; real gap ≈ 0.35 mm |
-| Isolation depth | Z −0.05 / −0.15 | −0.05 does not cut through the copper everywhere; −0.15 is no wider |
-| Drills 0.8 / 1.0 mm | Z −2.1 (`--max-depth 2.2`) | all holes through (−1.7 was not enough) |
-| Outline | 2 mm diamond corn mill, Z −1.7, 0.3 mm per pass, 4 tabs | ok |
-| Z / auto-leveling | | measured depths within ±0.01 mm of nominal |
-
-Design rules from this: track and copper clearance **≥ 0.25 mm**, pads ≥ 0.5 mm, holes ≥ 0.8 mm.
 
 ## Install / build
 
@@ -124,7 +109,7 @@ On Windows the windowed GUI `.exe` cannot print to a console – use the `-cli` 
 | `carvera_pp/cli.py`, `carvera_pp/gui.py` | the two front ends |
 | `docs/CLI.md` | full command line reference |
 | `AGENTS.md` | how AI agents use the tool (commands, checks, what to report, machine data) |
-| `examples/millproject_carvera` | pcb2gcode configuration for the Happylab tools, checked on the machine |
+| `examples/millproject_carvera` | example pcb2gcode configuration (starting point, adjust to your bits) |
 | `tests/` | unit tests. `tests/data/pcb2gcode_ecc83` = real pcb2gcode output (KiCad demo *ecc83*, bottom side). `tests/data/flatcam` = real FlatCAM 8.993 exports (Einschulung board, Toolchange off). `tests/data/flatcam_toolchange` = synthetic file after FlatCAM's `default` preprocessor with Toolchange on |
 
 ## Development
@@ -145,4 +130,4 @@ Agents that only *use* the tool: [AGENTS.md](AGENTS.md).
 - removes the `M0` pause after tool changes (it was kept before) and other leftovers
 - spindle restarted with the right speed after every tool change; one tool change for a repeated tool
 - safety check, preview, ASCII output, `M30`
-- documentation: full CLI reference (`docs/CLI.md`), agent guide (`AGENTS.md`), checked pcb2gcode config (`examples/`)
+- documentation: full CLI reference (`docs/CLI.md`), agent guide (`AGENTS.md`), example pcb2gcode config (`examples/`)
