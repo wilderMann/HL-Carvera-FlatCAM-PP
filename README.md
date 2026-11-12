@@ -97,7 +97,10 @@ python main.py                         # from source (Linux: needs python3-tkint
 python -m unittest discover -s tests   # tests
 ./setup_linux.sh                       # one-file binary with PyInstaller (GUI without args, CLI with args)
 setup_win.bat                          # Windows: GUI .exe (windowed) + "-cli" .exe (console)
+./build_appimage.sh                     # Linux AppImage (GUI without args, CLI with args)
 ```
+Ready-made binaries (Windows `.exe`, Linux AppImage) are on the [releases page](../../releases). They are built by
+`.github/workflows/release.yml` when a `v*` tag is pushed.
 On Windows the windowed GUI `.exe` cannot print to a console – use the `-cli` `.exe` for the command line.
 
 ## Project layout
