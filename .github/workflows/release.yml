@@ -1,0 +1,86 @@
+name: release
+# Builds the Windows .exe files and the Linux AppImage.
+#  - pull request touching the build files: build + smoke test only (artifacts downloadable from the run)
+#  - tag v*: build, smoke test, then create the GitHub release with the files attached
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths: [".github/workflows/release.yml", "build_appimage.sh", "setup_win.bat", "main.py", "carvera_pp/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build GUI and CLI .exe
+        shell: bash
+        run: |
+          V=$(python -c "import carvera_pp; print(carvera_pp.VERSION)")
+          pip install pyinstaller
+          pyinstaller --onefile --windowed --name "FlatCAM.Carvera.Postprozessor.v$V.win" --icon=icon/icon.ico main.py
+          pyinstaller --onefile --console  --name "FlatCAM.Carvera.Postprozessor.v$V.win-cli" --icon=icon/icon.ico main.py
+          ls -l dist
+      - name: Smoke test (CLI exe)
+        shell: bash
+        run: |
+          EXE=$(ls dist/*win-cli.exe)
+          "$EXE" --version
+          "$EXE" --pcb2gcode tests/data/pcb2gcode_ecc83 -o smoke.nc --preview | tee smoke.log
+          grep -q "Check: OK" smoke.log && test -s smoke.nc && test -s smoke_preview.svg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*.exe
+
+  linux:
+    runs-on: ubuntu-22.04          # old glibc -> the AppImage also runs on newer distros
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build AppImage
+        run: |
+          sudo apt-get update && sudo apt-get install -y python3-tk python3-pip
+          python3 -m pip install --user pyinstaller
+          ./build_appimage.sh
+          ls -l dist
+      - name: Smoke test (AppImage)
+        run: |
+          APP=$(ls dist/*.AppImage)
+          export APPIMAGE_EXTRACT_AND_RUN=1      # no FUSE on the runner
+          "$APP" --version
+          "$APP" --pcb2gcode tests/data/pcb2gcode_ecc83 -o smoke.nc --preview | tee smoke.log
+          grep -q "Check: OK" smoke.log && test -s smoke.nc && test -s smoke_preview.svg
+          python3 -c "import tkinter" && xvfb-run -a timeout 8 "$APP" || [ $? -eq 124 ]   # GUI starts (killed after 8 s)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*.AppImage
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Check tag = version in code
+        run: |
+          V=$(python3 -c "import carvera_pp; print(carvera_pp.VERSION)")
+          [ "v$V" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} != code version v$V"; exit 1; }
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES=".github/release-notes/${GITHUB_REF_NAME}.md"
+          [ -f "$NOTES" ] && N=(--notes-file "$NOTES") || N=(--generate-notes)
+          gh release create "$GITHUB_REF_NAME" assets/* --title "FlatCAM Carvera Postprocessor ${GITHUB_REF_NAME}" "${N[@]}"
