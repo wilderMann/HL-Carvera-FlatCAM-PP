@@ -1,0 +1,53 @@
+# pcb2gcode settings for the Happylab Makera Carvera (FR4 1.6 mm).
+# Tools: wiki.happylab.at/w/Carvera. Cutting data: Makera "PCB" presets. Checked on the real machine 2026-11 (see AGENTS.md).
+# Use: pcb2gcode --config millproject_carvera --back B_Cu.gbr --drill x.drl --outline Edge_Cuts.gbr ...
+# then: python3 main.py --pcb2gcode <output dir> -o board.nc --preview --max-depth 2.2
+
+metric=true
+metricoutput=true
+zero-start=true
+optimise=0.005mm
+tolerance=0.005
+nog64=true
+zsafe=1.0
+zchange=10.0
+spinup-time=0
+software=custom
+
+# --- isolation: Happylab 30deg V-bit = Sorotec VHM Frässtichel LGS.0030, 1 flute, SHARP tip (user, 2026-11-11)
+#     groove width = 2*depth*tan15 -> Z-0.10 = 0.0536 mm; 0.25 mm gap = ~5 overlapping passes (user choice).
+#     Was: Z-0.07 / 0.1575 mm (assumed 0.12 tip) -> 3 separate hairline grooves of 0.0375 mm.
+#     Feeds/rpm: Makera "Single Flute Engraving 30deg" PCB preset (stepdown 0.1).
+#     CALIBRATED 2026-11-11 (first real board, Weihnachtsbrosche): 0.5 mm tracks came out 0.3 mm -> the real
+#     groove is ~0.25 mm wide (tip not really sharp / runout), not 0.0536. Isolation itself was good.
+mill-diameters=0.25mm
+milling-overlap=10%
+isolation-width=0.44mm
+zwork=-0.10
+mill-feed=500
+mill-vertfeed=200
+mill-speed=12000
+
+# --- drills 0.8 / 1.0 / 1.4 mm (diameter:min-hole-offset:max-hole-offset)
+drills-available=0.8mm:-0.8mm:+0.05mm,1.0mm:-0.15mm:+0.05mm,1.4mm:-0.35mm:+0.149mm
+# drill tip (118deg) is 0.3 x D long: 1.6 board + 0.3 tip + 0.2 margin. First board: holes not all through at -1.7.
+zdrill=-2.1
+drill-feed=200
+drill-speed=10000
+nog81=true
+# holes >= 1.55 mm are milled with the 1 mm corn mill
+min-milldrill-hole-diameter=1.55mm
+milldrill-diameter=1.0mm
+zmilldrill=-1.7
+
+# --- outline: 2 mm diamond corn mill (default since 2026-11-11, user), 0.3 mm per pass, 4 tabs 1.5 mm wide, 0.6 mm high
+#     Makera PCB preset for 2 mm corn = same data as 1 mm. Inside corners get r = 1 mm. Holes >= 1.55 are still milled with the 1 mm mill.
+cutter-diameter=2.0mm
+zcut=-1.7
+cut-infeed=0.3
+cut-feed=500
+cut-vertfeed=300
+cut-speed=12000
+bridges=1.5mm
+bridgesnum=4
+zbridges=-1.0

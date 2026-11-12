@@ -1,6 +1,7 @@
 # Notes for AI agents / developers
 
-Happylab post-processor: FlatCAM / pcb2gcode G-code -> one Makera Carvera job. User-facing docs: README.md.
+Happylab post-processor: FlatCAM / pcb2gcode G-code -> one Makera Carvera job. User-facing docs: README.md,
+CLI reference: docs/CLI.md. Agents that only USE the tool (not change it): AGENTS.md.
 
 ## Layout
 - `main.py` – entry point. Arguments -> `carvera_pp/cli.py`, none -> `carvera_pp/gui.py` (tkinter, German UI).
@@ -24,5 +25,7 @@ Happylab post-processor: FlatCAM / pcb2gcode G-code -> one Makera Carvera job. U
 `tests/data/flatcam_toolchange` = synthetic (FlatCAM default preprocessor with Toolchange on).
 GUI check without clicking: create `App(tk.Tk())`, `app._add([...])`, screenshot with `import -window`.
 
-## Branches
-`cli-gui-pcb2gcode` = v2.0.0 rewrite (CLI + GUI + pcb2gcode), not merged into `master` yet.
+## Docs to keep in sync
+When options or output lines change, update docs/CLI.md (stable report lines: `Tool rack:`, `Check: OK|FAILED`,
+`Written:`, `Preview:`), the option table in README.md and AGENTS.md. Machine data (AGENTS.md §5, README "Tested on the
+Carvera", examples/millproject_carvera) only changes after a real test on the machine.

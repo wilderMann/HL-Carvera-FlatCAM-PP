@@ -87,7 +87,10 @@ def main(argv=None):
     ap.add_argument("--keep-tool-numbers", action="store_true", help="use the T numbers from the files (1-5) instead of auto")
     ap.add_argument("--origin", choices=["keep", "lower-left"], help="lower-left: shift X/Y so the job starts at X0 Y0 "
                     "(default: lower-left for --pcb2gcode, keep otherwise)")
-    ap.add_argument("--origin-margin", type=float, help="extra shift for lower-left (default: outline cutter radius for pcb2gcode)")
+    ap.add_argument("--origin-margin", type=float, metavar="MM",
+                    help="lower-left: the lowest path point lands at X/Y = -MM (default: outline cutter radius for "
+                         "pcb2gcode -> board corner = X0 Y0). Negative moves the job into a blank, e.g. "
+                         "--origin-margin=-9 = board edge 10 mm from the blank corner with a 2 mm outline mill")
     ap.add_argument("--no-clearance", action="store_true", help=f"do not go to clearance position (M496.1) at the end")
     ap.add_argument("--no-dummy", action="store_true", help=f"do not load the dummy tool T{DUMMY_TOOL} at the end")
     ap.add_argument("--z-change", type=float, default=10.0, help="retract height before tool changes (default 10)")
